@@ -154,3 +154,73 @@ df_resumen = pd.DataFrame({
     "FANTASY": [params["FANTASY"][escenario_activo]["ajustada"], params["FANTASY"][escenario_activo]["ss"], params["FANTASY"][escenario_activo]["rop"], params["FANTASY"][escenario_activo]["max"]]
 })
 st.table(df_resumen)
+# --- BLOQUE 6: EVOLUCIÓN SEMANAL CON ENTRADAS PROGRAMADAS ---
+st.markdown("---")
+st.header("📈 PROYECCIÓN DE EVOLUCIÓN SEMANAL")
+st.info("Introduce las unidades que esperas recibir cada semana (entradas de fábrica/importación).")
+
+num_semanas = st.slider("Semanas a proyectar", 4, 12, 8)
+
+col_ent1, col_ent2 = st.columns(2)
+
+with col_ent1:
+    st.subheader("Entradas Programadas - PRIME")
+    # Creamos una fila de inputs horizontales para las entradas semanales
+    entradas_p = [st.number_input(f"Sem +{i} (P)", min_value=0, value=0, key=f"ep_{i}") for i in range(1, num_semanas + 1)]
+
+with col_ent2:
+    st.subheader("Entradas Programadas - FANTASY")
+    entradas_f = [st.number_input(f"Sem +{i} (F)", min_value=0, value=0, key=f"ef_{i}") for i in range(1, num_semanas + 1)]
+
+def proyectar_stock_con_entradas(inicio, dem_ajustada, rop, ss, lista_entradas):
+    proyeccion = []
+    stock_iter = inicio
+    for i, entrada in enumerate(lista_entradas):
+        # El stock de la semana es: Stock Anterior - Demanda + Entrada programada
+        stock_iter = stock_iter - dem_ajustada + entrada
+        proyeccion.append({
+            "Semana": f"Sem +{i+1}",
+            "Stock Proyectado": round(max(0, stock_iter), 1),
+            "Punto Pedido (ROP)": rop,
+            "Seguridad (SS)": ss
+        })
+    return pd.DataFrame(proyeccion)
+
+# --- Visualización de Gráficos ---
+c_g1, c_g2 = st.columns(2)
+
+with c_g1:
+    df_p = proyectar_stock_con_entradas(
+        analisis_p['Inventario Disponible'], 
+        params["PRIME"][escenario_activo]["ajustada"],
+        params["PRIME"][escenario_activo]["rop"],
+        params["PRIME"][escenario_activo]["ss"],
+        entradas_p
+    )
+    st.line_chart(df_p.set_index("Semana"))
+    
+    # Lógica de alertas preventivas
+    if (df_p["Stock Proyectado"] < params["PRIME"][escenario_activo]["ss"]).any():
+        sem_critica = df_p[df_p["Stock Proyectado"] < params["PRIME"][escenario_activo]["ss"]].iloc[0]["Semana"]
+        st.error(f"🚨 PRIME: Rotura de Stock de Seguridad en {sem_critica}")
+
+with c_g2:
+    df_f = proyectar_stock_con_entradas(
+        analisis_f['Inventario Disponible'], 
+        params["FANTASY"][escenario_activo]["ajustada"],
+        params["FANTASY"][escenario_activo]["rop"],
+        params["FANTASY"][escenario_activo]["ss"],
+        entradas_f
+    )
+    st.line_chart(df_f.set_index("Semana"))
+    
+    if (df_f["Stock Proyectado"] < params["FANTASY"][escenario_activo]["ss"]).any():
+        sem_critica_f = df_f[df_f["Stock Proyectado"] < params["FANTASY"][escenario_activo]["ss"]].iloc[0]["Semana"]
+        st.error(f"🚨 FANTASY: Rotura de Stock de Seguridad en {sem_critica_f}")
+
+# Tabla de resumen para exportar o revisar
+with st.expander("📄 Ver detalle de datos proyectados"):
+    st.write("Datos calculados (Stock Final de cada semana)")
+    col_t1, col_t2 = st.columns(2)
+    col_t1.dataframe(df_p)
+    col_t2.dataframe(df_f)
