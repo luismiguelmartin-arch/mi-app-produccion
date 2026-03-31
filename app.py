@@ -154,82 +154,64 @@ df_resumen = pd.DataFrame({
     "FANTASY": [params["FANTASY"][escenario_activo]["ajustada"], params["FANTASY"][escenario_activo]["ss"], params["FANTASY"][escenario_activo]["rop"], params["FANTASY"][escenario_activo]["max"]]
 })
 st.table(df_resumen)
-# --- BLOQUE 6: EVOLUCIÓN SEMANAL (ENTRADAS Y SALIDAS MANUALES) ---
+# --- BLOQUE 6: EVOLUCIÓN SEMANAL (SIMULADOR DE FLUJO DE CAJA DE STOCK) ---
 st.markdown("---")
 st.header("📈 PROYECCIÓN DE EVOLUCIÓN SEMANAL")
-st.info("Ajusta las entradas (compras/fábrica) y salidas (ventas extra/ajustes) para ver el impacto en el stock.")
+st.info("Simulador manual: El stock solo variará según las Entradas y Salidas que registres a continuación.")
 
 num_semanas = st.slider("Semanas a proyectar", 4, 12, 8)
 
-# Creamos pestañas para organizar las entradas de datos
 tab_p, tab_f = st.tabs(["Gabinete PRIME", "Gabinete FANTASY"])
 
 with tab_p:
+    st.subheader("Entradas y Salidas - PRIME")
     cols_p = st.columns(num_semanas)
     ent_p = []
     sal_p = []
     for i in range(num_semanas):
         with cols_p[i]:
             st.caption(f"Sem +{i+1}")
-            e = st.number_input(f"Entrada", min_value=0, value=0, key=f"ent_p_{i}", label_visibility="collapsed")
-            s = st.number_input(f"Salida", min_value=0, value=0, key=f"sal_p_{i}", label_visibility="collapsed")
+            e = st.number_input(f"Entrada P {i}", min_value=0, value=0, key=f"ent_p_{i}", label_visibility="collapsed")
+            s = st.number_input(f"Salida P {i}", min_value=0, value=0, key=f"sal_p_{i}", label_visibility="collapsed")
             ent_p.append(e)
             sal_p.append(s)
-    st.caption("Fila superior: Entradas (+) | Fila inferior: Salidas extra (-)")
 
 with tab_f:
+    st.subheader("Entradas y Salidas - FANTASY")
     cols_f = st.columns(num_semanas)
     ent_f = []
     sal_f = []
     for i in range(num_semanas):
         with cols_f[i]:
             st.caption(f"Sem +{i+1}")
-            e = st.number_input(f"Entrada", min_value=0, value=0, key=f"ent_f_{i}", label_visibility="collapsed")
-            s = st.number_input(f"Salida", min_value=0, value=0, key=f"sal_f_{i}", label_visibility="collapsed")
+            e = st.number_input(f"Entrada F {i}", min_value=0, value=0, key=f"ent_f_{i}", label_visibility="collapsed")
+            s = st.number_input(f"Salida F {i}", min_value=0, value=0, key=f"sal_f_{i}", label_visibility="collapsed")
             ent_f.append(e)
             sal_f.append(s)
 
-def proyectar_stock_completo(inicio, dem_base, rop, ss, entradas, salidas_extra):
+def proyectar_stock_puro_manual(inicio, rop, ss, entradas, salidas):
     proyeccion = []
     stock_iter = inicio
     for i in range(len(entradas)):
-        # Cálculo: Stock Anterior - Demanda Normal - Salida Extra + Entrada
-        stock_iter = stock_iter - dem_base - salidas_extra[i] + entradas[i]
+        # CÁLCULO CORREGIDO: Solo entradas y salidas manuales
+        stock_iter = stock_iter + entradas[i] - salidas[i]
         proyeccion.append({
             "Semana": f"Sem +{i+1}",
             "Stock Proyectado": round(max(0, stock_iter), 1),
-            "Límite ROP": rop,
-            "Mínimo Seguridad": ss
+            "Punto Pedido (ROP)": rop,
+            "Seguridad (SS)": ss
         })
     return pd.DataFrame(proyeccion)
 
-# --- Generación de Gráficos ---
-c_g1, c_g2 = st.columns(2)
-
-df_p_final = proyectar_stock_completo(
+# Generación de DataFrames
+df_p_final = proyectar_stock_puro_manual(
     analisis_p['Inventario Disponible'], 
-    params["PRIME"][escenario_activo]["ajustada"],
     params["PRIME"][escenario_activo]["rop"],
     params["PRIME"][escenario_activo]["ss"],
     ent_p, sal_p
 )
 
-df_f_final = proyectar_stock_completo(
+df_f_final = proyectar_stock_puro_manual(
     analisis_f['Inventario Disponible'], 
-    params["FANTASY"][escenario_activo]["ajustada"],
     params["FANTASY"][escenario_activo]["rop"],
-    params["FANTASY"][escenario_activo]["ss"],
-    ent_f, sal_f
-)
-
-with c_g1:
-    st.subheader("Proyección PRIME")
-    st.line_chart(df_p_final.set_index("Semana"))
-    if (df_p_final["Stock Proyectado"] < params["PRIME"][escenario_activo]["ss"]).any():
-        st.error("🚨 PRIME: Riesgo de rotura detectado.")
-
-with c_g2:
-    st.subheader("Proyección FANTASY")
-    st.line_chart(df_f_final.set_index("Semana"))
-    if (df_f_final["Stock Proyectado"] < params["FANTASY"][escenario_activo]["ss"]).any():
-        st.error("🚨 FANTASY: Riesgo de rotura detectado.")
+    params["FANTASY"]
