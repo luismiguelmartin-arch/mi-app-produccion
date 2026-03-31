@@ -214,4 +214,29 @@ df_p_final = proyectar_stock_puro_manual(
 df_f_final = proyectar_stock_puro_manual(
     analisis_f['Inventario Disponible'], 
     params["FANTASY"][escenario_activo]["rop"],
-    params["FANTASY"]
+    params["FANTASY"][escenario_activo]["ss"],
+    ent_f, sal_f
+)
+
+# Visualización
+c_g1, c_g2 = st.columns(2)
+
+with c_g1:
+    st.subheader("Evolución PRIME")
+    st.line_chart(df_p_final.set_index("Semana"))
+    # Alerta si baja de Seguridad
+    if (df_p_final["Stock Proyectado"] < params["PRIME"][escenario_activo]["ss"]).any():
+        st.error("🚨 Riesgo de rotura en PRIME (debajo de seguridad)")
+
+with c_g2:
+    st.subheader("Evolución FANTASY")
+    st.line_chart(df_f_final.set_index("Semana"))
+    if (df_f_final["Stock Proyectado"] < params["FANTASY"][escenario_activo]["ss"]).any():
+        st.error("🚨 Riesgo de rotura en FANTASY (debajo de seguridad)")
+
+with st.expander("Ver detalle de la simulación"):
+    col_t1, col_t2 = st.columns(2)
+    col_t1.write("PRIME")
+    col_t1.dataframe(df_p_final)
+    col_t2.write("FANTASY")
+    col_t2.dataframe(df_f_final)
