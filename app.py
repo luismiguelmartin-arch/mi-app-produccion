@@ -154,73 +154,82 @@ df_resumen = pd.DataFrame({
     "FANTASY": [params["FANTASY"][escenario_activo]["ajustada"], params["FANTASY"][escenario_activo]["ss"], params["FANTASY"][escenario_activo]["rop"], params["FANTASY"][escenario_activo]["max"]]
 })
 st.table(df_resumen)
-# --- BLOQUE 6: EVOLUCIÓN SEMANAL CON ENTRADAS PROGRAMADAS ---
+# --- BLOQUE 6: EVOLUCIÓN SEMANAL (ENTRADAS Y SALIDAS MANUALES) ---
 st.markdown("---")
 st.header("📈 PROYECCIÓN DE EVOLUCIÓN SEMANAL")
-st.info("Introduce las unidades que esperas recibir cada semana (entradas de fábrica/importación).")
+st.info("Ajusta las entradas (compras/fábrica) y salidas (ventas extra/ajustes) para ver el impacto en el stock.")
 
 num_semanas = st.slider("Semanas a proyectar", 4, 12, 8)
 
-col_ent1, col_ent2 = st.columns(2)
+# Creamos pestañas para organizar las entradas de datos
+tab_p, tab_f = st.tabs(["Gabinete PRIME", "Gabinete FANTASY"])
 
-with col_ent1:
-    st.subheader("Entradas Programadas - PRIME")
-    # Creamos una fila de inputs horizontales para las entradas semanales
-    entradas_p = [st.number_input(f"Sem +{i} (P)", min_value=0, value=0, key=f"ep_{i}") for i in range(1, num_semanas + 1)]
+with tab_p:
+    cols_p = st.columns(num_semanas)
+    ent_p = []
+    sal_p = []
+    for i in range(num_semanas):
+        with cols_p[i]:
+            st.caption(f"Sem +{i+1}")
+            e = st.number_input(f"Entrada", min_value=0, value=0, key=f"ent_p_{i}", label_visibility="collapsed")
+            s = st.number_input(f"Salida", min_value=0, value=0, key=f"sal_p_{i}", label_visibility="collapsed")
+            ent_p.append(e)
+            sal_p.append(s)
+    st.caption("Fila superior: Entradas (+) | Fila inferior: Salidas extra (-)")
 
-with col_ent2:
-    st.subheader("Entradas Programadas - FANTASY")
-    entradas_f = [st.number_input(f"Sem +{i} (F)", min_value=0, value=0, key=f"ef_{i}") for i in range(1, num_semanas + 1)]
+with tab_f:
+    cols_f = st.columns(num_semanas)
+    ent_f = []
+    sal_f = []
+    for i in range(num_semanas):
+        with cols_f[i]:
+            st.caption(f"Sem +{i+1}")
+            e = st.number_input(f"Entrada", min_value=0, value=0, key=f"ent_f_{i}", label_visibility="collapsed")
+            s = st.number_input(f"Salida", min_value=0, value=0, key=f"sal_f_{i}", label_visibility="collapsed")
+            ent_f.append(e)
+            sal_f.append(s)
 
-def proyectar_stock_con_entradas(inicio, dem_ajustada, rop, ss, lista_entradas):
+def proyectar_stock_completo(inicio, dem_base, rop, ss, entradas, salidas_extra):
     proyeccion = []
     stock_iter = inicio
-    for i, entrada in enumerate(lista_entradas):
-        # El stock de la semana es: Stock Anterior - Demanda + Entrada programada
-        stock_iter = stock_iter - dem_ajustada + entrada
+    for i in range(len(entradas)):
+        # Cálculo: Stock Anterior - Demanda Normal - Salida Extra + Entrada
+        stock_iter = stock_iter - dem_base - salidas_extra[i] + entradas[i]
         proyeccion.append({
             "Semana": f"Sem +{i+1}",
             "Stock Proyectado": round(max(0, stock_iter), 1),
-            "Punto Pedido (ROP)": rop,
-            "Seguridad (SS)": ss
+            "Límite ROP": rop,
+            "Mínimo Seguridad": ss
         })
     return pd.DataFrame(proyeccion)
 
-# --- Visualización de Gráficos ---
+# --- Generación de Gráficos ---
 c_g1, c_g2 = st.columns(2)
 
+df_p_final = proyectar_stock_completo(
+    analisis_p['Inventario Disponible'], 
+    params["PRIME"][escenario_activo]["ajustada"],
+    params["PRIME"][escenario_activo]["rop"],
+    params["PRIME"][escenario_activo]["ss"],
+    ent_p, sal_p
+)
+
+df_f_final = proyectar_stock_completo(
+    analisis_f['Inventario Disponible'], 
+    params["FANTASY"][escenario_activo]["ajustada"],
+    params["FANTASY"][escenario_activo]["rop"],
+    params["FANTASY"][escenario_activo]["ss"],
+    ent_f, sal_f
+)
+
 with c_g1:
-    df_p = proyectar_stock_con_entradas(
-        analisis_p['Inventario Disponible'], 
-        params["PRIME"][escenario_activo]["ajustada"],
-        params["PRIME"][escenario_activo]["rop"],
-        params["PRIME"][escenario_activo]["ss"],
-        entradas_p
-    )
-    st.line_chart(df_p.set_index("Semana"))
-    
-    # Lógica de alertas preventivas
-    if (df_p["Stock Proyectado"] < params["PRIME"][escenario_activo]["ss"]).any():
-        sem_critica = df_p[df_p["Stock Proyectado"] < params["PRIME"][escenario_activo]["ss"]].iloc[0]["Semana"]
-        st.error(f"🚨 PRIME: Rotura de Stock de Seguridad en {sem_critica}")
+    st.subheader("Proyección PRIME")
+    st.line_chart(df_p_final.set_index("Semana"))
+    if (df_p_final["Stock Proyectado"] < params["PRIME"][escenario_activo]["ss"]).any():
+        st.error("🚨 PRIME: Riesgo de rotura detectado.")
 
 with c_g2:
-    df_f = proyectar_stock_con_entradas(
-        analisis_f['Inventario Disponible'], 
-        params["FANTASY"][escenario_activo]["ajustada"],
-        params["FANTASY"][escenario_activo]["rop"],
-        params["FANTASY"][escenario_activo]["ss"],
-        entradas_f
-    )
-    st.line_chart(df_f.set_index("Semana"))
-    
-    if (df_f["Stock Proyectado"] < params["FANTASY"][escenario_activo]["ss"]).any():
-        sem_critica_f = df_f[df_f["Stock Proyectado"] < params["FANTASY"][escenario_activo]["ss"]].iloc[0]["Semana"]
-        st.error(f"🚨 FANTASY: Rotura de Stock de Seguridad en {sem_critica_f}")
-
-# Tabla de resumen para exportar o revisar
-with st.expander("📄 Ver detalle de datos proyectados"):
-    st.write("Datos calculados (Stock Final de cada semana)")
-    col_t1, col_t2 = st.columns(2)
-    col_t1.dataframe(df_p)
-    col_t2.dataframe(df_f)
+    st.subheader("Proyección FANTASY")
+    st.line_chart(df_f_final.set_index("Semana"))
+    if (df_f_final["Stock Proyectado"] < params["FANTASY"][escenario_activo]["ss"]).any():
+        st.error("🚨 FANTASY: Riesgo de rotura detectado.")
